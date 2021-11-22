@@ -3,6 +3,8 @@ import torch.nn as nn
 from torch.distributions import MultivariateNormal
 from torch.distributions import Categorical
 
+import numpy as np
+
 
 ################################## set device ##################################
 
@@ -51,6 +53,7 @@ class VisualActorCritic(nn.Module):
         self.action_dim = action_dim
         self.action_var = torch.full((action_dim,), action_std_init * action_std_init).to(device)
         
+        self.cnn_head_size = 0
         
         self.cnn_head = nn.Sequential(
             nn.Conv2d(3, 6, 4),
@@ -64,16 +67,13 @@ class VisualActorCritic(nn.Module):
         with torch.no_grad():
             # Batch size, color channels, x , y 
             test = torch.zeros((2, 3, squared_image_side, squared_image_side))
-            print(test)
-            print(test.shape)
             result = self.cnn_head(test)
-            cnn_head_size = 30 * result.shape[2]*result.shape[3]
-            print(result.view(-1, 30*result.shape[2]*result.shape[3]))
+            self.cnn_head_size = 30 * result.shape[2]*result.shape[3]
              
 
         # actor
         self.actor = nn.Sequential(
-                        nn.Linear(cnn_head_size, 64),  
+                        nn.Linear(self.cnn_head_size, 64),  
                         nn.Tanh(),
                         nn.Linear(64, 64),
                         nn.Tanh(),
@@ -84,7 +84,7 @@ class VisualActorCritic(nn.Module):
         
         # critic
         self.critic = nn.Sequential(
-                        nn.Linear(cnn_head_size, 64),
+                        nn.Linear(self.cnn_head_size, 64),
                         nn.Tanh(),
                         nn.Linear(64, 64),
                         nn.Tanh(),
@@ -100,7 +100,12 @@ class VisualActorCritic(nn.Module):
     
     def act(self, state):
         # The expected shape of the state is (batch size, channelsize (3), width (84), height(84) ) 
-        action_mean = self.actor(self.cnn_head(state))
+        
+        
+        
+        cnn_res = self.cnn_head(state).view(-1, self.cnn_head_size)
+        
+        action_mean = self.actor(cnn_res)
         cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
         dist = MultivariateNormal(action_mean, cov_mat)
 
@@ -112,7 +117,9 @@ class VisualActorCritic(nn.Module):
 
     def evaluate(self, state, action):
         # The expected shape of the state is (batch size, channelsize (3), width (84), height(84) ) 
-        action_mean = self.actor(self.cnn_head(state))
+        cnn_res = self.cnn_head(state).view(-1, self.cnn_head_size) 
+        
+        action_mean = self.actor(cnn_res)
         
         action_var = self.action_var.expand_as(action_mean)
         cov_mat = torch.diag_embed(action_var).to(device)
@@ -124,7 +131,9 @@ class VisualActorCritic(nn.Module):
 
         action_logprobs = dist.log_prob(action)
         dist_entropy = dist.entropy()
-        state_values = self.critic(self.cnn_head(state))
+        
+        cnn_res = self.cnn_head(state).view(-1, self.cnn_head_size) 
+        state_values = self.critic(cnn_res)
         
         return action_logprobs, state_values, dist_entropy
 
@@ -177,12 +186,13 @@ class PPO:
     def select_action(self, state):
 
         with torch.no_grad():
-            state = torch.FloatTensor(state).to(device)
+            state: torch.Tensor = torch.from_numpy(np.moveaxis(state, -1, 0)).float().to(device).unsqueeze(dim=0)
             action, action_logprob = self.policy_old.act(state)
-
-        self.buffer.states.append(state)
-        self.buffer.actions.append(action)
+        
+        self.buffer.states.append(state.squeeze())
+        self.buffer.actions.append(action.squeeze())
         self.buffer.logprobs.append(action_logprob)
+       
 
         return action.detach().cpu().numpy().flatten()
 
@@ -241,7 +251,7 @@ class PPO:
     
     def save(self, checkpoint_path):
         torch.save(self.policy_old.state_dict(), checkpoint_path)
-   
+        pass
 
     def load(self, checkpoint_path):
         self.policy_old.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))

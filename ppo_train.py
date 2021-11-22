@@ -16,7 +16,7 @@ from ppo import PPO
 def train():
     print("=====================================================================")
 
-    max_ep_len = 10000
+    max_ep_len = 1500
     max_training_steps = int(3e7)
 
     max_training_timesteps = int(3e7)  # break training loop if timeteps > max_training_timesteps
@@ -30,8 +30,8 @@ def train():
     min_action_std = 0.05  # minimum action_std (stop decay after action_std <= min_action_std)
     action_std_decay_freq = int(2.5e5)  # action_std decay frequency (in num timesteps)
 
-    update_timestep = max_ep_len * 4  # update policy every n timesteps
-    K_epochs = 800  # update policy for K epochs in one PPO update
+    update_timestep = 300  # update policy every n timesteps
+    K_epochs = 50  # update policy for K epochs in one PPO update
 
     eps_clip = 0.2  # clip parameter for PPO
     gamma = 0.99  # discount factor
@@ -72,7 +72,6 @@ def train():
 
         for i_action in range(max_ep_len):
 
-            print(observation.shape)
             action = ppo_agent.select_action(observation)
 
             observation, reward, done, _ = env.step(action)
@@ -95,22 +94,16 @@ def train():
             reward_window.append(episode_reward)
             print('\rEpisode {} Step {} \tavg Score: {:.2f}'.format(i_episode, i_time_step, np.mean(reward_window)),
                   end="")
-            if i_episode % 1000 == 0:
-                print('\rEpisode {} Step {} \tavg Score: {:.2f}'.format(i_episode, i_time_step, np.mean(reward_window)))
-                ppo_agent.save('/weights/model.pth')
+                
 
-            i_episode += 1
-
-            if done:
+            if done:          
                 break
-
-    for _ in range(100000):
-        env.render()
-        action = env.action_space.sample()  # your agent here (this takes random actions)
-        observation, reward, done, info = env.step(action)
-
-        if done:
-            observation = env.reset()
+              
+        i_episode += 1
+        
+        if i_episode % 2 == 0:
+                print('\rEpisode {} Step {} \tavg Score: {:.2f}'.format(i_episode, i_time_step, np.mean(reward_window)))
+                ppo_agent.save('weights/model.pth')
 
     env.close()
 
