@@ -1,5 +1,6 @@
 from gym_unity.envs import UnityToGymWrapper
 from mlagents_envs.environment import UnityEnvironment
+from mlagents_envs.side_channel.engine_configuration_channel import EngineConfigurationChannel
 import gym
 from collections import deque
 import time
@@ -30,8 +31,8 @@ def train():
     min_action_std = 0.05  # minimum action_std (stop decay after action_std <= min_action_std)
     action_std_decay_freq = int(2.5e5)  # action_std decay frequency (in num timesteps)
 
-    update_timestep = 300  # update policy every n timesteps
-    K_epochs = 50  # update policy for K epochs in one PPO update
+    update_timestep = 500  # update policy every n timesteps
+    K_epochs = 10  # update policy for K epochs in one PPO update
 
     eps_clip = 0.2  # clip parameter for PPO
     gamma = 0.99  # discount factor
@@ -41,7 +42,10 @@ def train():
 
     random_seed = 0  # set random seed if required (0 = no random seed)
 
-    unity_env = UnityEnvironment("./Builders_Sim.app")
+    channel = EngineConfigurationChannel()
+    channel.set_configuration_parameters(width=300, height=300, time_scale=10.0)
+
+    unity_env = UnityEnvironment("./Builder_Sim/Builders_Sim.x86_64", side_channels=[channel])
     env = UnityToGymWrapper(unity_env, True)
 
     observation = env.reset()
@@ -101,7 +105,7 @@ def train():
               
         i_episode += 1
         
-        if i_episode % 2 == 0:
+        if i_episode % 10 == 0:
                 print('\rEpisode {} Step {} \tavg Score: {:.2f}'.format(i_episode, i_time_step, np.mean(reward_window)))
                 ppo_agent.save('weights/model.pth')
 
