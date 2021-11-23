@@ -38,7 +38,7 @@ def train():
     channel = EngineConfigurationChannel()
     channel.set_configuration_parameters(width=300, height=300, time_scale=10.0)
 
-    unity_env = UnityEnvironment("./Builder_Sim/Builders_Sim.x86_64", side_channels=[channel])
+    unity_env = UnityEnvironment("./Builders_Sim/Builders_Sim.x86_64", side_channels=[channel])
     env = UnityToGymWrapper(unity_env, True)
 
     observation = env.reset()
