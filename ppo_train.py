@@ -18,13 +18,8 @@ def train():
     print("=====================================================================")
 
     max_ep_len = 1500
-    max_training_steps = int(3e7)
 
     max_training_timesteps = int(3e7)  # break training loop if timeteps > max_training_timesteps
-
-    print_freq = max_ep_len * 10  # print avg reward in the interval (in num timesteps)
-    log_freq = max_ep_len * 2  # log avg reward in the interval (in num timesteps)
-    save_model_freq = int(1e5)  # save model frequency (in num timesteps)
 
     action_std = 0.6  # starting std for action distribution (Multivariate Normal)
     action_std_decay_rate = 0.05  # linearly decay action_std (action_std = action_std - action_std_decay_rate)
@@ -39,8 +34,6 @@ def train():
 
     lr_actor = 0.0003  # learning rate for actor network
     lr_critic = 0.001  # learning rate for critic network
-
-    random_seed = 0  # set random seed if required (0 = no random seed)
 
     channel = EngineConfigurationChannel()
     channel.set_configuration_parameters(width=300, height=300, time_scale=10.0)
