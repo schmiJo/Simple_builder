@@ -155,7 +155,7 @@ class ContVisualDdpgAgent():
     """
     
     
-    def __init__(self, visual_obs_size: int, action_size: int, buffer_size: int, batch_size: int, visual_obs_channels: int = 3, gamma: int = 0.99, tau: int = 1e-3, lr_actor: int = 3e-4, lr_critic: int = 1e-4) -> None:
+    def __init__(self, visual_obs_size: int, action_size: int, buffer_size: int, batch_size: int, visual_obs_channels: int = 3, gamma: int = 0.99, tau: int = 1e-3, lr_actor: int = 3e-4, lr_critic: int = 1e-4, lr_cnn = 2e-4) -> None:
         """
         Args:
             visual_obs_size (int): one squared lenght of the ob
@@ -177,6 +177,7 @@ class ContVisualDdpgAgent():
         self.tau = tau
         self.lr_actor = lr_actor
         self.lr_critic = lr_critic
+        self.lr_cnn = lr_cnn
         
         
         # Replay Buffer
@@ -188,7 +189,16 @@ class ContVisualDdpgAgent():
         
         self.hard_update()
         
-        #self.optim = optim.Adam(self.local_net.parameters(), lr= lr)
+        self.actor_optim = optim.Adam([
+            {'params': self.local_net.actor_body, 'lr': lr_actor},
+            {'params': self.local_net.cnn_body, 'lr': lr_actor}  
+        ])
+        
+        
+        self.critic_optim = optim.Adam([
+            {'params': self.local_net.critic, 'lr': lr_critic},
+            {'params': self.local_net.cnn_body, 'lr': lr_critic}  
+        ])
         
         # OU Noise is not used in this implementation
         
@@ -245,7 +255,14 @@ class ContVisualDdpgAgent():
         # Compute the Q target for the current state
         Q_targets = rewards + (self.gamma * next_Q_target * (1- dones))
         # Calculate the loss function 
-        criritc_loss = F.mse_loss(Q_expected, Q_targets) # the expected q values should be close to the q targets
+        critc_loss = F.mse_loss(Q_expected, Q_targets) # the expected q values should be close to the q targets
+        self.critic_optim.zero_grad()
+        critc_loss.backward()
+        
+        
+        # train the actor
+        
+        
         self.c
         
         

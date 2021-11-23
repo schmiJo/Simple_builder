@@ -88,7 +88,6 @@ def train():
             if i_time_step % action_std_decay_freq == 0:
                 ppo_agent.decay_action_std(action_std_decay_rate, min_action_std)
 
-            reward_window.append(episode_reward)
             print('\rEpisode {} Step {} \tavg Score: {:.2f}'.format(i_episode, i_time_step, np.mean(reward_window)),
                   end="")
                 
@@ -98,6 +97,7 @@ def train():
               
         i_episode += 1
         
+        reward_window.append(episode_reward)
         if i_episode % 50 == 0:
                 print('\rEpisode {} Step {} \tavg Score: {:.2f}'.format(i_episode, i_time_step, np.mean(reward_window)))
                 ppo_agent.save('weights/model.pth')
