@@ -151,6 +151,7 @@ class PPO:
 
         self.policy = VisualActorCritic(state_dim, action_dim, action_std_init).to(device)
         self.optimizer = torch.optim.Adam([
+                        {'params': self.policy.cnn_head.parameters(), 'lr': lr_actor},
                         {'params': self.policy.actor.parameters(), 'lr': lr_actor},
                         {'params': self.policy.critic.parameters(), 'lr': lr_critic}
                     ])
