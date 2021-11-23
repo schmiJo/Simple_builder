@@ -27,9 +27,9 @@ def train():
     save_model_freq = int(1e5)  # save model frequency (in num timesteps)
 
     action_std = 0.6  # starting std for action distribution (Multivariate Normal)
-    action_std_decay_rate = 0.01  # linearly decay action_std (action_std = action_std - action_std_decay_rate)
-    min_action_std = 0.05  # minimum action_std (stop decay after action_std <= min_action_std)
-    action_std_decay_freq = int(2.5e5)  # action_std decay frequency (in num timesteps)
+    action_std_decay_rate = 0.05  # linearly decay action_std (action_std = action_std - action_std_decay_rate)
+    min_action_std = 0.01  # minimum action_std (stop decay after action_std <= min_action_std)
+    action_std_decay_freq = int(2e4)  # action_std decay frequency (in num timesteps)
 
     update_timestep = 500  # update policy every n timesteps
     K_epochs = 10  # update policy for K epochs in one PPO update
@@ -67,7 +67,7 @@ def train():
 
     i_time_step = 0
     i_episode = 0
-    reward_window = deque(maxlen=1000)
+    reward_window = deque(maxlen=50)
 
     while i_time_step <= max_training_timesteps:
 
@@ -105,7 +105,7 @@ def train():
               
         i_episode += 1
         
-        if i_episode % 10 == 0:
+        if i_episode % 50 == 0:
                 print('\rEpisode {} Step {} \tavg Score: {:.2f}'.format(i_episode, i_time_step, np.mean(reward_window)))
                 ppo_agent.save('weights/model.pth')
 
