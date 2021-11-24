@@ -258,12 +258,17 @@ class ContVisualDdpgAgent():
         critc_loss = F.mse_loss(Q_expected, Q_targets) # the expected q values should be close to the q targets
         self.critic_optim.zero_grad()
         critc_loss.backward()
-        
+        self.critic_optim.step()
         
         # train the actor
+        action_pred = self.local_net.choose_action(visual_obs)
+        actor_loss = -self.local_net.critic(visual_obs, action_pred).mean()
+        self.actor_optim.zero_grad()
+        actor_loss.backward()
+        self.actor_optim.step()
         
         
-        self.c
+        self.soft_update()
         
         
         pass

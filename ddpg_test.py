@@ -20,9 +20,13 @@ ddpg_agent = ContVisualDdpgAgent(84, 5, 2e6, 20)
 for _ in range(100000):
   env.render() 
   action = ddpg_agent.act(observation)
-  observation, reward, done, info = env.step(action)
+  observation_next, reward, done, info = env.step(action)
   
   print(action)
+  
+  ddpg_agent.step(observation, action, reward, observation_next, done)
+  
+  observation = observation_next
   
   if done:
     observation = env.reset()
