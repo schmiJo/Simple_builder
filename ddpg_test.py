@@ -22,8 +22,6 @@ for _ in range(100000):
   action = ddpg_agent.act(observation)
   observation_next, reward, done, info = env.step(action)
   
-  print(action)
-  
   ddpg_agent.step(observation, action, reward, observation_next, done)
   
   observation = observation_next

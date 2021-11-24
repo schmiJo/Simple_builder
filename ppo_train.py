@@ -12,6 +12,7 @@ from datetime import datetime
 from ppo import PPO
 
 
+
 ## ################## Training #################
 
 def train():
@@ -38,7 +39,7 @@ def train():
     channel = EngineConfigurationChannel()
     channel.set_configuration_parameters(width=300, height=300, time_scale=10.0)
 
-    unity_env = UnityEnvironment("./Builders_Sim/Builders_Sim.x86_64", side_channels=[channel])
+    unity_env = UnityEnvironment("./Builders_Sim.app", side_channels=[channel])
     env = UnityToGymWrapper(unity_env, True)
 
     observation = env.reset()
@@ -91,11 +92,11 @@ def train():
             print('\rEpisode {} Step {} \tavg Score: {:.2f}'.format(i_episode, i_time_step, np.mean(reward_window)),
                   end="")
                 
-
             if done:          
                 break
               
         i_episode += 1
+        observation = env.reset()
         
         reward_window.append(episode_reward)
         if i_episode % 50 == 0:

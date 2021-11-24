@@ -1,4 +1,4 @@
-from numpy.random.mtrand import random
+import random 
 import torch
 import torch.nn as nn
 import numpy as np
@@ -64,7 +64,7 @@ class VisualActorCriticNet(nn.Module):
         
         # the critic body that comes after the common cnn layer
         self.critic = nn.Sequential(
-            nn.Linear(self.cnn_head_size, 128 + action_size),
+            nn.Linear(self.cnn_head_size + action_size, 128),
             nn.ReLU(),
             nn.Linear(128, 64), # the action gets inserted at this step to the feed forward network
             nn.ReLU(),
@@ -102,7 +102,6 @@ class VisualActorCriticNet(nn.Module):
         cnn_head = cnn_head.view(-1, self.cnn_head_size)# shape (batch size, channels * out_shape^2)
         
         state_action_tensor = torch.cat((cnn_head, action), dim=1) # shape (batch_size, chanells * out_shape^2 + action_size)
-        
         value = self.critic(state_action_tensor)
         
         return value
@@ -190,14 +189,14 @@ class ContVisualDdpgAgent():
         self.hard_update()
         
         self.actor_optim = optim.Adam([
-            {'params': self.local_net.actor_body, 'lr': lr_actor},
-            {'params': self.local_net.cnn_body, 'lr': lr_actor}  
+            {'params': self.local_net.actor_body.parameters(), 'lr': lr_actor},
+            {'params': self.local_net.cnn_body.parameters(), 'lr': lr_actor}  
         ])
         
         
         self.critic_optim = optim.Adam([
-            {'params': self.local_net.critic, 'lr': lr_critic},
-            {'params': self.local_net.cnn_body, 'lr': lr_critic}  
+            {'params': self.local_net.critic.parameters(), 'lr': lr_critic},
+            {'params': self.local_net.cnn_body.parameters(), 'lr': lr_critic}  
         ])
         
         # OU Noise is not used in this implementation
@@ -246,6 +245,10 @@ class ContVisualDdpgAgent():
         
         visual_obs, actions, rewards, next_visual_obs, dones = exp
         
+        dones = torch.unsqueeze(dones, dim = 1)
+    
+        
+        
         # train the criric
         next_actions = self.target_net.choose_action(visual_obs)
         # get expected values from local critic by passsing in both the states and the action
@@ -262,7 +265,7 @@ class ContVisualDdpgAgent():
         
         # train the actor
         action_pred = self.local_net.choose_action(visual_obs)
-        actor_loss = -self.local_net.critic(visual_obs, action_pred).mean()
+        actor_loss = -self.local_net.evaluate(visual_obs, action_pred).mean()
         self.actor_optim.zero_grad()
         actor_loss.backward()
         self.actor_optim.step()
