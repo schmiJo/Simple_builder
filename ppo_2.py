@@ -95,20 +95,6 @@ class VisualActorCritric(nn.Module):
     def forward(self):
         raise NotImplementedError
         
-    def act(self, visual_obs: torch.Tensor):
-        """Generate an action given a state
-
-        Args:
-            visual_obs (torch.Tensor): Visual Observation of the agent: shape(batch_size, channel_size (3), width (84), height(84ch))
-        """
-        
-        cnn_res = self.cnn_head(visual_obs).view(-1, self.cnn_head_size) # first the state gets passed to the cnn network and flattened into the shape (batch_size, cnn_head_size)
-        
-        action_mean = self.actor(cnn_res) # forward it to the actor net to generate the mean of the action that will be taken shape(batch_size, action_size)
-        cov_matrix = torch.diag(self.action_var).unsqueeze(dim=0) # creates a diagonal matrix with the variance on the diagonal, no covairances are desired
-        dist = MultivariateNormal(action_mean, cov_matrix) # use the multivariable normal distribution to sample from, mean is the action vector gotten from the action net and the variance is the computed covariance matric
-        
-        
         
     def act(self, visual_obs: torch.Tensor):
         """Generate an action given a state
@@ -120,18 +106,65 @@ class VisualActorCritric(nn.Module):
         cnn_res = self.cnn_head(visual_obs).view(-1, self.cnn_head_size) # first the state gets passed to the cnn network and flattened into the shape (batch_size, cnn_head_size)
         
         action_mean = self.actor(cnn_res) # forward it to the actor net to generate the mean of the action that will be taken shape(batch_size, action_size)
-        cov_matrix =  # since the same variance is desired in all directions of the action_space, the variance is simply expanded to fill the same shape as the action mean shape(batch_size, aciton_size)
+        cov_matrix = torch.diag(self.action_var).unsqueeze(dim = 0) # since the same variance is desired in all directions of the action_space, the variance is simply expanded to fill the same shape as the action mean shape(batch_size, aciton_size)
         dist = MultivariateNormal(action_mean, cov_matrix) # use the multivariable normal distribution to sample from, mean is the action vector gotten from the action net and the variance is the computed covariance matric
         action = dist.sample()
         action_logprobs = dist.log_prob(action)
         
         return action.detach(), action_logprobs.detach()
     
-    def evaluate(self, state, action):
+    def evaluate(self, visual_obs: torch.Tensor, action):
         
-        cnn_res = self.cnn_head(state).view(-1, self.cnn_head_size)
+        cnn_res = self.cnn_head(visual_obs).view(-1, self.cnn_head_size)
         
         action_mean = self.actor(cnn_res)
         
         action_var = self.action_var.expand_as(action_mean)
-        cov_mat = torch.diag_embed(action_var)
+        cov_mat = torch.diag_embed(action_var).to(device)
+        dist = MultivariateNormal(action_mean, cov_mat)
+        
+        action_logprobs = dist.log_prob(action)
+        
+        dist_entropy = dist.entropy()
+        # Todo: Try using the cnn_res from above and see how the gradients check out
+        cnn_res = self.cnn_head(visual_obs).view(-1, self.cnn_head_size) 
+        state_values = self.critic(cnn_res)
+        return action_logprobs, state_values, dist_entropy
+
+class PPO:
+    def __init__(self, squared_img_size: int, action_size: int, lr = 1e-4 , gamma = 0.99, K_epochs = 5 , eps_clip = 0.1, action_std_init = 0.3) -> None:
+        
+        self.action_std = action_std_init
+        self.gamma = gamma
+        self.eps_clip = eps_clip
+        self.squared_img_size = squared_img_size
+        self.action_size = action_size
+        self.lr = lr
+        self.K_epochs = K_epochs
+        
+        
+        self.memory = RolloutBuffer()
+        
+        self.policy = VisualActorCritric(squared_img_size, action_size, self.action_std).to(device)
+        
+        self.optim = torch.optim.Adam([
+            {'params': self.policy.cnn_head.parameters(), 'lr': lr},
+            {'params': self.policy.actor.parameters(), 'lr' : lr },
+            {'params': self.policy.critic.parameters(), 'lr': lr }
+        ])
+        
+        self.policy_old = VisualActorCritric(squared_img_size, action_size, self.action_std)
+        self.policy_old.load_state_dict(self.policy.state_dict())
+        
+        self.MseLoss = nn.MSELoss()
+        
+    def set_action_std(self, new_action_std):
+        self.action_std = new_action_std
+        self.policy.set_action_std(new_action_std)
+        
+    def decay_actoion_std(self, aciton_std--lö-öö-ö)
+        
+        pass
+    
+    
+    
