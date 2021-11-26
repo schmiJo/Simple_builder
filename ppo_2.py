@@ -26,7 +26,7 @@ print("=========================================================================
 class RolloutBuffer:
     def __init__(self):
         self.actions = []
-        self.states = []
+        self.visual_obss = []
         self.logprobs = []
         self.rewards = []
         self.is_terminals = []
@@ -34,10 +34,17 @@ class RolloutBuffer:
 
     def clear(self):
         del self.actions[:]
-        del self.states[:]
+        del self.visual_obss[:]
         del self.logprobs[:]
         del self.rewards[:]
         del self.is_terminals[:]
+        
+    def add(self, action, visual_obs, logprob, reward, is_terminal):
+        self.actions.append(action)
+        self.visual_obss.append(visual_obs)
+        self.logprobs.append(logprob)
+        self.rewards.append(reward)
+        self.is_terminals.append(is_terminal)
         
         
 class VisualActorCritric(nn.Module):
@@ -162,9 +169,104 @@ class PPO:
         self.action_std = new_action_std
         self.policy.set_action_std(new_action_std)
         
-    def decay_actoion_std(self, aciton_std--lö-öö-ö)
-        
+    def decay_actoion_std(self, action_std_decay_rate, min_action_std):
+        print("--------------------------------------------------------------------------------------------")
+
+        self.action_std = self.action_std - action_std_decay_rate
+        self.action_std = round(self.action_std, 4)
+        if (self.action_std <= min_action_std):
+            self.action_std = min_action_std
+            print("setting actor output action_std to min_action_std : ", self.action_std)
+        else:
+            print("setting actor output action_std to : ", self.action_std)
+        self.set_action_std(self.action_std)
+
+        print("--------------------------------------------------------------------------------------------")
         pass
     
+    def choose_action(self, visual_obs):
+        #visual_obs = np.moveaxis(visual_obs,-1, 0) do this 
+        with torch.no_grad():
+            visual_obs: torch.Tensor = torch.from_numpy(visual_obs).float().to(device).unsqueeze(dim= 0)
+            action, action_logprob = self.policy_old.act(visual_obs)
+            
+        return action, action_logprob
+    
+    def update(self):
+        """Updates and learns from the experiences in the buffer, clears the buffer afterwards
+        """
+        
+        # Monte carlo estimate
+        rewards = []
+        discounted_reward = 0
+        for rewards, is_terminal in zip(reversed(self.memory.rewards), reversed(self.memory.is_terminals)):
+            if is_terminal:
+                discounted_reward = 0
+            discounted_reward = rewards + self.gamma * discounted_reward
+            rewards.insert(0, discounted_reward)
+            
+        # Normalizing the rewards
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
+        
+        # convert list to tensor
+        old_states = torch.squeeze(torch.stack(self.memory.visual_obss, dim=0)).detach().to(device)
+        old_actions = torch.squeeze(torch.stack(self.memory.actions, dim=0)).detach().to(device)
+        old_logprobs = torch.squeeze(torch.stack(self.memory.logprobs, dim=0)).detach().to(device)
+        
+         # Optimize policy for K epochs
+        for _ in range(self.K_epochs):
+
+            # Evaluating old actions and values
+            logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions)
+
+            # match state_values tensor dimensions with rewards tensor
+            state_values = torch.squeeze(state_values)
+            
+            # Finding the ratio (pi_theta / pi_theta__old)
+            ratios = torch.exp(logprobs - old_logprobs.detach())
+
+            # Finding Surrogate Loss
+            advantages = rewards - state_values.detach()   
+            surr1 = ratios * advantages
+            surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
+
+            # final loss of clipped objective PPO
+            loss = -torch.min(surr1, surr2) + 0.5*self.MseLoss(state_values, rewards) - 0.01*dist_entropy
+            
+            # take gradient step
+            self.optim.zero_grad()
+            loss.mean().backward()
+            self.optim.step()
+            
+        # Copy new weights into old polcy
+        self.policy_old.load_state_dict(self.policy.state_dict())
+        
+        
+        # clean buffer
+        self.memory.clear()
+        
+        pass
+            
+    def step(self, action, visual_obs, action_logprob, reward, is_terminal):
+        """
+        Add to the buffer the relevant information
+        Args:
+            action ([type]): [description]
+            visual_obs ([type]): [description]
+            action_logprob ([type]): [description]
+            reward ([type]): [description]
+            is_terminal (bool): [description]
+        """
+        self.memory.add(action, visual_obs, action_logprob, reward, is_terminal)
+        
+    def save(self, checkpoint_path):
+        torch.save(self.policy_old.state_dict(), checkpoint_path)
+        pass
+
+    def load(self, checkpoint_path):
+        self.policy_old.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
+        self.policy.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
+            
     
     
