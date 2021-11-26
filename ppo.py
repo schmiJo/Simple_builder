@@ -101,14 +101,11 @@ class VisualActorCritic(nn.Module):
     def act(self, state):
         # The expected shape of the state is (batch size, channelsize (3), width (84), height(84) ) 
         
-        
-        
         cnn_res = self.cnn_head(state).view(-1, self.cnn_head_size)
         
         action_mean = self.actor(cnn_res)
         cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
         dist = MultivariateNormal(action_mean, cov_mat)
-
         action = dist.sample()
         action_logprob = dist.log_prob(action)
         
@@ -124,6 +121,9 @@ class VisualActorCritic(nn.Module):
         action_var = self.action_var.expand_as(action_mean)
         cov_mat = torch.diag_embed(action_var).to(device)
         dist = MultivariateNormal(action_mean, cov_mat)
+        print("evaluation covariance matrix")
+        print(cov_mat)
+        print(cov_mat.shape)
         
         # For Single Action Environments.
         if self.action_dim == 1:

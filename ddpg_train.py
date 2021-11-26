@@ -48,19 +48,10 @@ def train():
 
     max_training_timesteps = int(3e7)  # break training loop if timeteps > max_training_timesteps
 
-    action_std = 0.6  # starting std for action distribution (Multivariate Normal)
-    action_std_decay_rate = 0.05  # linearly decay action_std (action_std = action_std - action_std_decay_rate)
-    min_action_std = 0.01  # minimum action_std (stop decay after action_std <= min_action_std)
-    action_std_decay_freq = int(2e4)  # action_std decay frequency (in num timesteps)
-
-    update_timestep = 500  # update policy every n timesteps
-    K_epochs = 10  # update policy for K epochs in one PPO update
 
     buffer_size = 1e6
     gamma = 0.99  # discount factor
-
-    lr_actor = 0.0003  # learning rate for actor network
-    lr_critic = 0.001  # learning rate for critic network
+   
 
     channel = EngineConfigurationChannel()
     channel.set_configuration_parameters(width=300, height=300, time_scale=10.0)
