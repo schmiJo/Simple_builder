@@ -1,13 +1,9 @@
 import torch
 import torch.nn as nn
 from torch.distributions import MultivariateNormal
-from torch.distributions import Categorical
-
 import numpy as np
 
-
-################################## set device ##################################
-
+#Region Set device
 print("============================================================================================")
 
 
@@ -24,15 +20,13 @@ else:
 print("============================================================================================")
 
 
-
-
 ################################## PPO Policy ##################################
 
 
 class RolloutBuffer:
     def __init__(self):
         self.actions = []
-        self.states = []
+        self.visual_obss = []
         self.logprobs = []
         self.rewards = []
         self.is_terminals = []
@@ -40,18 +34,29 @@ class RolloutBuffer:
 
     def clear(self):
         del self.actions[:]
-        del self.states[:]
+        del self.visual_obss[:]
         del self.logprobs[:]
         del self.rewards[:]
         del self.is_terminals[:]
-
-
-class VisualActorCritic(nn.Module):
-    def __init__(self, squared_image_side, action_dim, action_std_init):
-        super(VisualActorCritic, self).__init__()
-
-        self.action_dim = action_dim
-        self.action_var = torch.full((action_dim,), action_std_init * action_std_init).to(device)
+        
+    def add(self, action, visual_obs, logprob, reward, is_terminal):
+        self.actions.append(action)
+        self.visual_obss.append(visual_obs)
+        self.logprobs.append(logprob)
+        self.rewards.append(reward)
+        self.is_terminals.append(is_terminal)
+        
+        
+class VisualActorCritric(nn.Module):
+    
+    def __init__(self, square_image_size: int, action_size: int, action_std_init: int):
+        super().__init__()
+        
+        self.action_size = action_size
+        
+        self.action_var = torch.full((action_size, ), action_std_init ** 2 ).to(device)
+        
+        print(self.action_var.shape)
         
         self.cnn_head_size = 0
         
@@ -66,7 +71,7 @@ class VisualActorCritic(nn.Module):
         
         with torch.no_grad():
             # Batch size, color channels, x , y 
-            test = torch.zeros((2, 3, squared_image_side, squared_image_side))
+            test = torch.zeros((2, 3, square_image_size, square_image_size))
             result = self.cnn_head(test)
             self.cnn_head_size = 30 * result.shape[2]*result.shape[3]
              
@@ -77,7 +82,7 @@ class VisualActorCritic(nn.Module):
                         nn.Tanh(),
                         nn.Linear(64, 64),
                         nn.Tanh(),
-                        nn.Linear(64, action_dim),
+                        nn.Linear(64, action_size),
                         nn.Tanh()
                     )
            
@@ -92,84 +97,79 @@ class VisualActorCritic(nn.Module):
                     )
         
     def set_action_std(self, new_action_std):
-        self.action_var = torch.full((self.action_dim,), new_action_std * new_action_std).to(device)
-
-
+        self.action_var = torch.full((self.action_size, ), new_action_std ** 2 ).to(device)
+        
     def forward(self):
         raise NotImplementedError
-    
-    def act(self, state):
-        # The expected shape of the state is (batch size, channelsize (3), width (84), height(84) ) 
         
-        cnn_res = self.cnn_head(state).view(-1, self.cnn_head_size)
         
-        action_mean = self.actor(cnn_res)
-        cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
-        dist = MultivariateNormal(action_mean, cov_mat)
-        action = dist.sample()
-        action_logprob = dist.log_prob(action)
-        
-        return action.detach(), action_logprob.detach()
-    
+    def act(self, visual_obs: torch.Tensor):
+        """Generate an action given a state
 
-    def evaluate(self, state, action):
-        # The expected shape of the state is (batch size, channelsize (3), width (84), height(84) ) 
-        cnn_res = self.cnn_head(state).view(-1, self.cnn_head_size) 
+        Args:
+            visual_obs (torch.Tensor): Visual Observation of the agent: shape(batch_size, channel_size (3), width (84), height(84ch))
+        """
+        
+        cnn_res = self.cnn_head(visual_obs).view(-1, self.cnn_head_size) # first the state gets passed to the cnn network and flattened into the shape (batch_size, cnn_head_size)
+        
+        action_mean = self.actor(cnn_res) # forward it to the actor net to generate the mean of the action that will be taken shape(batch_size, action_size)
+        cov_matrix = torch.diag(self.action_var).unsqueeze(dim = 0) # since the same variance is desired in all directions of the action_space, the variance is simply expanded to fill the same shape as the action mean shape(batch_size, aciton_size)
+        dist = MultivariateNormal(action_mean, cov_matrix) # use the multivariable normal distribution to sample from, mean is the action vector gotten from the action net and the variance is the computed covariance matric
+        action = dist.sample()
+        action_logprobs = dist.log_prob(action)
+        
+        return action.detach(), action_logprobs.detach()
+    
+    def evaluate(self, visual_obs: torch.Tensor, action):
+        
+        cnn_res = self.cnn_head(visual_obs).view(-1, self.cnn_head_size)
         
         action_mean = self.actor(cnn_res)
         
         action_var = self.action_var.expand_as(action_mean)
         cov_mat = torch.diag_embed(action_var).to(device)
         dist = MultivariateNormal(action_mean, cov_mat)
-        print("evaluation covariance matrix")
-        print(cov_mat)
-        print(cov_mat.shape)
         
-        # For Single Action Environments.
-        if self.action_dim == 1:
-            action = action.reshape(-1, self.action_dim)
-
         action_logprobs = dist.log_prob(action)
+        
         dist_entropy = dist.entropy()
-        
-        cnn_res = self.cnn_head(state).view(-1, self.cnn_head_size) 
+        # Todo: Try using the cnn_res from above and see how the gradients check out
+        cnn_res = self.cnn_head(visual_obs).view(-1, self.cnn_head_size) 
         state_values = self.critic(cnn_res)
-        
         return action_logprobs, state_values, dist_entropy
 
-
 class PPO:
-    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, action_std_init=0.6):
-
+    def __init__(self, squared_img_size: int, action_size: int, lr = 1e-4 , gamma = 0.99, K_epochs = 5 , eps_clip = 0.1, action_std_init = 0.3) -> None:
+        
         self.action_std = action_std_init
-
         self.gamma = gamma
         self.eps_clip = eps_clip
+        self.squared_img_size = squared_img_size
+        self.action_size = action_size
+        self.lr = lr
         self.K_epochs = K_epochs
         
-        self.buffer = RolloutBuffer()
-
-        self.policy = VisualActorCritic(state_dim, action_dim, action_std_init).to(device)
-        self.optimizer = torch.optim.Adam([
-                        {'params': self.policy.cnn_head.parameters(), 'lr': lr_actor},
-                        {'params': self.policy.actor.parameters(), 'lr': lr_actor},
-                        {'params': self.policy.critic.parameters(), 'lr': lr_critic}
-                    ])
-
-        self.policy_old = VisualActorCritic(state_dim, action_dim, action_std_init).to(device)
+        
+        self.memory = RolloutBuffer()
+        
+        self.policy = VisualActorCritric(squared_img_size, action_size, self.action_std).to(device)
+        
+        self.optim = torch.optim.Adam([
+            {'params': self.policy.cnn_head.parameters(), 'lr': lr},
+            {'params': self.policy.actor.parameters(), 'lr' : lr },
+            {'params': self.policy.critic.parameters(), 'lr': lr }
+        ])
+        
+        self.policy_old = VisualActorCritric(squared_img_size, action_size, self.action_std)
         self.policy_old.load_state_dict(self.policy.state_dict())
         
         self.MseLoss = nn.MSELoss()
-
-
-    def set_action_std(self, new_action_std):
         
+    def set_action_std(self, new_action_std):
         self.action_std = new_action_std
         self.policy.set_action_std(new_action_std)
-        self.policy_old.set_action_std(new_action_std)
         
-
-    def decay_action_std(self, action_std_decay_rate, min_action_std):
+    def decay_actoion_std(self, action_std_decay_rate, min_action_std):
         print("--------------------------------------------------------------------------------------------")
 
         self.action_std = self.action_std - action_std_decay_rate
@@ -182,43 +182,39 @@ class PPO:
         self.set_action_std(self.action_std)
 
         print("--------------------------------------------------------------------------------------------")
-
-
-    def select_action(self, state):
-
+        pass
+    
+    def choose_action(self, visual_obs):
+        #visual_obs = np.moveaxis(visual_obs,-1, 0) do this 
         with torch.no_grad():
-            state: torch.Tensor = torch.from_numpy(np.moveaxis(state, -1, 0)).float().to(device).unsqueeze(dim=0)
-            action, action_logprob = self.policy_old.act(state)
-        
-        self.buffer.states.append(state.squeeze())
-        self.buffer.actions.append(action.squeeze())
-        self.buffer.logprobs.append(action_logprob)
-       
-
-        return action.detach().cpu().numpy().flatten()
-
+            visual_obs: torch.Tensor = torch.from_numpy(visual_obs).float().to(device).unsqueeze(dim= 0)
+            action, action_logprob = self.policy_old.act(visual_obs)
+            
+        return action, action_logprob
+    
     def update(self):
-
-        # Monte Carlo estimate of returns
+        """Updates and learns from the experiences in the buffer, clears the buffer afterwards
+        """
+        
+        # Monte carlo estimate
         rewards = []
         discounted_reward = 0
-        for reward, is_terminal in zip(reversed(self.buffer.rewards), reversed(self.buffer.is_terminals)):
+        for rewards, is_terminal in zip(reversed(self.memory.rewards), reversed(self.memory.is_terminals)):
             if is_terminal:
                 discounted_reward = 0
-            discounted_reward = reward + (self.gamma * discounted_reward)
+            discounted_reward = rewards + self.gamma * discounted_reward
             rewards.insert(0, discounted_reward)
             
         # Normalizing the rewards
         rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
-
+        
         # convert list to tensor
-        old_states = torch.squeeze(torch.stack(self.buffer.states, dim=0)).detach().to(device)
-        old_actions = torch.squeeze(torch.stack(self.buffer.actions, dim=0)).detach().to(device)
-        old_logprobs = torch.squeeze(torch.stack(self.buffer.logprobs, dim=0)).detach().to(device)
+        old_states = torch.squeeze(torch.stack(self.memory.visual_obss, dim=0)).detach().to(device)
+        old_actions = torch.squeeze(torch.stack(self.memory.actions, dim=0)).detach().to(device)
+        old_logprobs = torch.squeeze(torch.stack(self.memory.logprobs, dim=0)).detach().to(device)
         
-        
-        # Optimize policy for K epochs
+         # Optimize policy for K epochs
         for _ in range(self.K_epochs):
 
             # Evaluating old actions and values
@@ -239,17 +235,31 @@ class PPO:
             loss = -torch.min(surr1, surr2) + 0.5*self.MseLoss(state_values, rewards) - 0.01*dist_entropy
             
             # take gradient step
-            self.optimizer.zero_grad()
+            self.optim.zero_grad()
             loss.mean().backward()
-            self.optimizer.step()
+            self.optim.step()
             
-        # Copy new weights into old policy
+        # Copy new weights into old polcy
         self.policy_old.load_state_dict(self.policy.state_dict())
-
-        # clear buffer
-        self.buffer.clear()
-    
-    
+        
+        
+        # clean buffer
+        self.memory.clear()
+        
+        pass
+            
+    def step(self, action, visual_obs, action_logprob, reward, is_terminal):
+        """
+        Add to the buffer the relevant information
+        Args:
+            action ([type]): [description]
+            visual_obs ([type]): [description]
+            action_logprob ([type]): [description]
+            reward ([type]): [description]
+            is_terminal (bool): [description]
+        """
+        self.memory.add(action, visual_obs, action_logprob, reward, is_terminal)
+        
     def save(self, checkpoint_path):
         torch.save(self.policy_old.state_dict(), checkpoint_path)
         pass
@@ -257,12 +267,6 @@ class PPO:
     def load(self, checkpoint_path):
         self.policy_old.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
         self.policy.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
-        
-        
-       
-
-
-
-
-
-
+            
+    
+    
