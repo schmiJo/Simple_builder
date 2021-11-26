@@ -12,7 +12,7 @@ from datetime import datetime
 from ddpg import ContVisualDdpgAgent
 
 
-unity_env = UnityEnvironment("./Builders_Sim.app")
+unity_env = UnityEnvironment("./Builders_Sim/Builders_Sim.x86_64")
 env = UnityToGymWrapper(unity_env, True)
 
 
