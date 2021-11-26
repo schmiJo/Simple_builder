@@ -120,7 +120,18 @@ class VisualActorCritric(nn.Module):
         cnn_res = self.cnn_head(visual_obs).view(-1, self.cnn_head_size) # first the state gets passed to the cnn network and flattened into the shape (batch_size, cnn_head_size)
         
         action_mean = self.actor(cnn_res) # forward it to the actor net to generate the mean of the action that will be taken shape(batch_size, action_size)
-        cov_matrix = self.action_var.expand_as(action_mean) # since the same variance is desired in all directions of the action_space, the variance is simply expanded to fill the same shape as the action mean shape(batch_size, aciton_size)
+        cov_matrix =  # since the same variance is desired in all directions of the action_space, the variance is simply expanded to fill the same shape as the action mean shape(batch_size, aciton_size)
         dist = MultivariateNormal(action_mean, cov_matrix) # use the multivariable normal distribution to sample from, mean is the action vector gotten from the action net and the variance is the computed covariance matric
+        action = dist.sample()
+        action_logprobs = dist.log_prob(action)
         
-        action_logprobs = dist.log_prob()
+        return action.detach(), action_logprobs.detach()
+    
+    def evaluate(self, state, action):
+        
+        cnn_res = self.cnn_head(state).view(-1, self.cnn_head_size)
+        
+        action_mean = self.actor(cnn_res)
+        
+        action_var = self.action_var.expand_as(action_mean)
+        cov_mat = torch.diag_embed(action_var)
