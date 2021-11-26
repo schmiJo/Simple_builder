@@ -37,7 +37,7 @@ def train():
     lr_critic = 0.001  # learning rate for critic network
 
     channel = EngineConfigurationChannel()
-    channel.set_configuration_parameters(width=300, height=300, time_scale=10.0)
+    channel.set_configuration_parameters(width=300, height=300, time_scale=2.0)
 
     unity_env = UnityEnvironment("./Builders_Sim.app", side_channels=[channel])
     env = UnityToGymWrapper(unity_env, True)
