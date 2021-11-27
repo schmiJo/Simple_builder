@@ -34,12 +34,12 @@ def train():
     gamma = 0.99  # discount factor
 
     lr_actor = 0.0003  # learning rate for actor network
-    lr_critic = 0.001  # learning rate for critic network
+    #lr_critic = 0.001  # learning rate for critic network
 
     channel = EngineConfigurationChannel()
     channel.set_configuration_parameters(width=300, height=300, time_scale=2.0)
 
-    unity_env = UnityEnvironment("./Builders_Sim.app", side_channels=[channel])
+    unity_env = UnityEnvironment("./Builders_Sim/Builders_Sim.x86_64", side_channels=[channel])
     env = UnityToGymWrapper(unity_env, True)
 
     observation = env.reset()
@@ -51,7 +51,7 @@ def train():
 
     action_size = env.action_space.shape[0]
 
-    ppo_agent = PPO(squared_image_size, action_size, lr_actor, lr_critic, gamma, K_epochs, eps_clip, action_std)
+    ppo_agent = PPO(squared_image_size, action_size, lr_actor, gamma, K_epochs, eps_clip, action_std)
 
     # track total training time
     start_time = datetime.now().replace(microsecond=0)
